@@ -1,94 +1,94 @@
 using UnityEngine;
 using UnityEngine.Video;
 
-public class VR360ControlledPlayer : MonoBehaviour
+public class VR360Controller : MonoBehaviour
 {
     [Header("References")]
-    public VideoPlayer videoPlayer;         // Drag your VideoPlayer here
-    public Transform cameraTransform;       // Drag Main Camera (or XR Origin Camera)
-    public Transform playerRig;             // Drag XR Origin or parent of camera
+    public VideoPlayer videoPlayer;     // drag your VideoPlayer here
+    public Camera vrCamera;             // drag Main Camera here
 
     [Header("Settings")]
-    public float rotationSpeed = 45f;       // Degrees per second for rotation
-    public float moveSpeed = 0.5f;          // Movement speed for joystick/keyboard
-    public bool isVRMode = false;           // Auto-detect VR if available
+    public float rotationSpeed = 0.2f;
+    public float moveSpeed = 2f;
+    public float zoomSpeed = 10f;
+    public float minFOV = 30f;
+    public float maxFOV = 100f;
 
-    private void Start()
+    private bool isPaused = false;
+    private bool isDragging = false;
+    private Vector3 lastMousePos;
+    private float yaw = 0f;
+    private float pitch = 0f;
+
+    void Start()
     {
-        if (videoPlayer != null)
-        {
-            videoPlayer.playOnAwake = false;
-            videoPlayer.Pause();
-        }
+        if (vrCamera == null)
+            vrCamera = GetComponent<Camera>();
 
-        if (cameraTransform == null && Camera.main != null)
-            cameraTransform = Camera.main.transform;
-
-#if UNITY_ANDROID && !UNITY_EDITOR
-        isVRMode = true; // if on headset
-#endif
+        Vector3 euler = transform.localEulerAngles;
+        yaw = euler.y;
+        pitch = euler.x;
     }
 
-    private void Update()
+    void Update()
     {
-        if (videoPlayer == null || cameraTransform == null) return;
-
-        bool anyInput = false;
-
-        // ---------- PC Keyboard Input ----------
-        if (!isVRMode)
+        // --- Pause / Play ---
+        if (Input.GetKeyDown(KeyCode.Space))
         {
-            if (Input.GetKey(KeyCode.UpArrow))
+            if (videoPlayer.isPlaying)
             {
-                anyInput = true;
-                if (!videoPlayer.isPlaying) videoPlayer.Play();
-            }
-            if (Input.GetKey(KeyCode.DownArrow))
-            {
-                anyInput = true;
-                if (videoPlayer.isPlaying) videoPlayer.Pause();
-            }
-            if (Input.GetKey(KeyCode.LeftArrow))
-            {
-                anyInput = true;
-                cameraTransform.Rotate(Vector3.up, -rotationSpeed * Time.deltaTime, Space.World);
-            }
-            if (Input.GetKey(KeyCode.RightArrow))
-            {
-                anyInput = true;
-                cameraTransform.Rotate(Vector3.up, rotationSpeed * Time.deltaTime, Space.World);
-            }
-        }
-
-        // ---------- VR Controller Input ----------
-#if UNITY_ANDROID && !UNITY_EDITOR
-        float horizontal = OVRInput.Get(OVRInput.Axis2D.PrimaryThumbstick).x;
-        float vertical = OVRInput.Get(OVRInput.Axis2D.PrimaryThumbstick).y;
-
-        // Move forward/backward with joystick
-        if (Mathf.Abs(vertical) > 0.1f)
-        {
-            anyInput = true;
-
-            // Forward: play, Backward: pause
-            if (vertical > 0f && !videoPlayer.isPlaying)
-                videoPlayer.Play();
-            else if (vertical < 0f && videoPlayer.isPlaying)
                 videoPlayer.Pause();
+                isPaused = true;
+                Debug.Log("Paused");
+            }
+            else
+            {
+                videoPlayer.Play();
+                isPaused = false;
+                Debug.Log("Playing");
+            }
         }
 
-        // Rotate left/right with joystick
-        if (Mathf.Abs(horizontal) > 0.1f && playerRig != null)
+        // --- Mouse Look ---
+        if (Input.GetMouseButtonDown(0))
         {
-            anyInput = true;
-            playerRig.Rotate(Vector3.up, horizontal * rotationSpeed * Time.deltaTime, Space.World);
+            isDragging = true;
+            lastMousePos = Input.mousePosition;
         }
-#endif
-
-        // ---------- Pause if no input ----------
-        if (!anyInput && videoPlayer.isPlaying)
+        if (Input.GetMouseButtonUp(0))
         {
-            videoPlayer.Pause();
+            isDragging = false;
+        }
+
+        if (isDragging)
+        {
+            Vector3 delta = Input.mousePosition - lastMousePos;
+            yaw += delta.x * rotationSpeed;
+            pitch -= delta.y * rotationSpeed;
+            pitch = Mathf.Clamp(pitch, -85f, 85f);
+
+            vrCamera.transform.localRotation = Quaternion.Euler(pitch, yaw, 0f);
+            lastMousePos = Input.mousePosition;
+        }
+
+        // --- Zoom ---
+        float scroll = Input.GetAxis("Mouse ScrollWheel");
+        if (scroll != 0f && vrCamera != null)
+        {
+            vrCamera.fieldOfView -= scroll * zoomSpeed;
+            vrCamera.fieldOfView = Mathf.Clamp(vrCamera.fieldOfView, minFOV, maxFOV);
+        }
+
+        // --- Movement follows camera direction ---
+        float moveInput = Input.GetAxis("Vertical"); // W/S or Up/Down
+        if (Mathf.Abs(moveInput) > 0.01f)
+        {
+            // Move exactly in direction the camera is facing
+            Vector3 moveDir = vrCamera.transform.forward;
+            moveDir.y = 0; // keep level
+            moveDir.Normalize();
+
+            vrCamera.transform.parent.Translate(moveDir * moveInput * moveSpeed * Time.deltaTime, Space.World);
         }
     }
 }
