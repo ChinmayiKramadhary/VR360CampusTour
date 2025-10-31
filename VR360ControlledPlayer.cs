@@ -4,14 +4,13 @@ using UnityEngine.Video;
 public class VR360ControlledPlayer : MonoBehaviour
 {
     [Header("References")]
-    public VideoPlayer videoPlayer;         // Drag your VideoPlayer here
-    public Transform cameraTransform;       // Drag Main Camera (or XR Origin Camera)
-    public Transform playerRig;             // Drag XR Origin or parent of camera
+    public VideoPlayer videoPlayer;      // Drag your VideoPlayer here
+    public Transform cameraTransform;    // Drag Main Camera (inside XR Rig)
+    public Transform playerRig;          // Drag XR Origin or parent object (used in VR)
 
     [Header("Settings")]
-    public float rotationSpeed = 45f;       // Degrees per second for rotation
-    public float moveSpeed = 0.5f;          // Movement speed for joystick/keyboard
-    public bool isVRMode = false;           // Auto-detect VR if available
+    public float rotationSpeed = 60f;    // Degrees per second for rotation
+    public bool isVRMode = false;        // Automatically detects on headset
 
     private void Start()
     {
@@ -21,11 +20,12 @@ public class VR360ControlledPlayer : MonoBehaviour
             videoPlayer.Pause();
         }
 
+        // Auto-assign main camera if not set
         if (cameraTransform == null && Camera.main != null)
             cameraTransform = Camera.main.transform;
 
 #if UNITY_ANDROID && !UNITY_EDITOR
-        isVRMode = true; // if on headset
+        isVRMode = true; // Auto-detect VR when running on Meta Quest
 #endif
     }
 
@@ -33,62 +33,53 @@ public class VR360ControlledPlayer : MonoBehaviour
     {
         if (videoPlayer == null || cameraTransform == null) return;
 
-        bool anyInput = false;
-
-        // ---------- PC Keyboard Input ----------
+        // ========= Keyboard Controls (Mac / PC) =========
         if (!isVRMode)
         {
-            if (Input.GetKey(KeyCode.UpArrow))
+            // Forward → Play
+            if (Input.GetKey(KeyCode.UpArrow) || Input.GetKey(KeyCode.W))
             {
-                anyInput = true;
                 if (!videoPlayer.isPlaying) videoPlayer.Play();
             }
-            if (Input.GetKey(KeyCode.DownArrow))
+            // Backward → Pause
+            if (Input.GetKey(KeyCode.DownArrow) || Input.GetKey(KeyCode.S))
             {
-                anyInput = true;
                 if (videoPlayer.isPlaying) videoPlayer.Pause();
             }
-            if (Input.GetKey(KeyCode.LeftArrow))
+
+            // Rotate Left
+            if (Input.GetKey(KeyCode.LeftArrow) || Input.GetKey(KeyCode.A))
             {
-                anyInput = true;
                 cameraTransform.Rotate(Vector3.up, -rotationSpeed * Time.deltaTime, Space.World);
             }
-            if (Input.GetKey(KeyCode.RightArrow))
+            // Rotate Right
+            if (Input.GetKey(KeyCode.RightArrow) || Input.GetKey(KeyCode.D))
             {
-                anyInput = true;
                 cameraTransform.Rotate(Vector3.up, rotationSpeed * Time.deltaTime, Space.World);
             }
         }
 
-        // ---------- VR Controller Input ----------
+        // ========= VR Joystick Controls (Meta Quest) =========
 #if UNITY_ANDROID && !UNITY_EDITOR
-        float horizontal = OVRInput.Get(OVRInput.Axis2D.PrimaryThumbstick).x;
-        float vertical = OVRInput.Get(OVRInput.Axis2D.PrimaryThumbstick).y;
+        Vector2 joystick = OVRInput.Get(OVRInput.Axis2D.PrimaryThumbstick);
 
-        // Move forward/backward with joystick
-        if (Mathf.Abs(vertical) > 0.1f)
+        // Forward (Play) / Backward (Pause)
+        if (Mathf.Abs(joystick.y) > 0.2f)
         {
-            anyInput = true;
-
-            // Forward: play, Backward: pause
-            if (vertical > 0f && !videoPlayer.isPlaying)
+            if (joystick.y > 0f && !videoPlayer.isPlaying)
                 videoPlayer.Play();
-            else if (vertical < 0f && videoPlayer.isPlaying)
+            else if (joystick.y < 0f && videoPlayer.isPlaying)
                 videoPlayer.Pause();
         }
 
-        // Rotate left/right with joystick
-        if (Mathf.Abs(horizontal) > 0.1f && playerRig != null)
+        // Rotate Left/Right via joystick
+        if (Mathf.Abs(joystick.x) > 0.2f)
         {
-            anyInput = true;
-            playerRig.Rotate(Vector3.up, horizontal * rotationSpeed * Time.deltaTime, Space.World);
+            if (playerRig != null)
+                playerRig.Rotate(Vector3.up, joystick.x * rotationSpeed * Time.deltaTime, Space.World);
+            else
+                cameraTransform.Rotate(Vector3.up, joystick.x * rotationSpeed * Time.deltaTime, Space.World);
         }
 #endif
-
-        // ---------- Pause if no input ----------
-        if (!anyInput && videoPlayer.isPlaying)
-        {
-            videoPlayer.Pause();
-        }
     }
 }
